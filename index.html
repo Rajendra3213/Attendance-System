@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Code Attendance System</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    #camera {
+      width: 400px;
+      height: 300px;
+      border: 2px solid #ddd;
+      margin-bottom: 20px;
+    }
+    #output {
+      font-size: 1.2rem;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>QR Code Attendance System</h1>
+
+  <p>Click the button below to start scanning a QR code:</p>
+  <button id="startButton">Start Scanning</button>
+  <button id="stopButton" style="display:none;">Stop Scanning</button>
+
+  <div>
+    <video id="camera" autoplay></video>
+  </div>
+  <div id="output">No QR code detected yet.</div>
+
+  <script>
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const camera = document.getElementById('camera');
+    const output = document.getElementById('output');
+    
+    let stream = null;
+    let scanning = false;
+
+    function startCamera() {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then(function(localStream) {
+            stream = localStream;
+            camera.srcObject = localStream;
+            scanning = true;
+            output.textContent = "Scanning for QR code...";
+            requestAnimationFrame(scanQRCode);
+          })
+          .catch(function(err) {
+            console.error("Error accessing the camera: ", err);
+          });
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        scanning = false;
+        output.textContent = "Scanning stopped.";
+      }
+    }
+
+    function scanQRCode() {
+      if (scanning) {
+        const canvas = document.createElement('canvas');
+        canvas.width = camera.videoWidth;
+        canvas.height = camera.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(camera, 0, 0, canvas.width, canvas.height);
+
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const qrCodeData = jsQR(imageData.data, imageData.width, imageData.height);
+
+        if (qrCodeData) {
+          output.innerHTML = `Decoded QR Code: <strong>${qrCodeData.data}</strong>`;
+          updateAttendance(qrCodeData.data);
+          stopCamera();
+          stopButton.style.display = 'none';
+          startButton.style.display = 'inline-block';
+        } else {
+          requestAnimationFrame(scanQRCode);
+        }
+      }
+    }
+
+    function updateAttendance(data) {
+      const [name, email] = data.split(', ');
+
+      if (name && email) {
+        // Perform an AJAX request to update the attendance in the CSV file (assuming a backend API exists)
+        output.innerHTML += `<br><strong>Updating attendance for ${name} (${email})...</strong>`;
+
+        // Example of AJAX request to update the CSV file (you'll need a backend to handle this)
+        fetch('/update-attendance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ name, email })
+        })
+        .then(response => response.json())
+        .then(result => {
+          if (result.success) {
+            output.innerHTML += `<br>Attendance updated successfully for ${name}.`;
+          } else {
+            output.innerHTML += `<br>Failed to update attendance: ${result.message}`;
+          }
+        })
+        .catch(err => {
+          console.error("Error updating attendance: ", err);
+          output.innerHTML += `<br>Error updating attendance.`;
+        });
+      } else {
+        output.innerHTML += `<br>Invalid QR code format.`;
+      }
+    }
+
+    startButton.addEventListener('click', () => {
+      startButton.style.display = 'none';
+      stopButton.style.display = 'inline-block';
+      startCamera();
+    });
+
+    stopButton.addEventListener('click', () => {
+      stopCamera();
+      stopButton.style.display = 'none';
+      startButton.style.display = 'inline-block';
+    });
+  </script>
+
+</body>
+</html>
